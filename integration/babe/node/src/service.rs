@@ -335,6 +335,8 @@ pub fn new_full_base(
 		other: (rpc_builder, import_setup, rpc_setup, mut telemetry),
 	} = new_partial(&config, executor)?;
 
+	let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+
 	let shared_voter_state = rpc_setup;
 	let auth_disc_publish_non_global_ips = config.network.allow_non_globals_in_dht;
 	let grandpa_protocol_name = grandpa::protocol_standard_name(
@@ -342,10 +344,10 @@ pub fn new_full_base(
 		&config.chain_spec,
 	);
 
-	config
-		.network
-		.extra_sets
-		.push(grandpa::grandpa_peers_set_config(grandpa_protocol_name.clone()));
+	net_config.add_notification_protocol(grandpa::grandpa_peers_set_config(
+		grandpa_protocol_name.clone(),
+	));
+
 	let warp_sync = Arc::new(grandpa::warp_proof::NetworkProvider::new(
 		backend.clone(),
 		import_setup.1.shared_authority_set().clone(),
@@ -355,6 +357,7 @@ pub fn new_full_base(
 	let (network, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
 		sc_service::build_network(sc_service::BuildNetworkParams {
 			config: &config,
+			net_config,
 			client: client.clone(),
 			transaction_pool: transaction_pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),
@@ -699,7 +702,7 @@ mod tests {
 						sc_consensus_babe::authorship::claim_slot(slot.into(), &epoch, &keystore)
 							.map(|(digest, _)| digest)
 					{
-						break (babe_pre_digest, epoch_descriptor)
+						break (babe_pre_digest, epoch_descriptor);
 					}
 
 					slot += 1;

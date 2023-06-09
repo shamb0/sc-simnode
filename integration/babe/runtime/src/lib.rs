@@ -308,21 +308,21 @@ impl InstanceFilter<RuntimeCall> for ProxyType {
 			ProxyType::Any => true,
 			ProxyType::NonTransfer => !matches!(
 				c,
-				RuntimeCall::Balances(..) |
-					RuntimeCall::Assets(..) |
-					RuntimeCall::Uniques(..) |
-					RuntimeCall::Nfts(..) |
-					RuntimeCall::Vesting(pallet_vesting::Call::vested_transfer { .. }) |
-					RuntimeCall::Indices(pallet_indices::Call::transfer { .. })
+				RuntimeCall::Balances(..)
+					| RuntimeCall::Assets(..)
+					| RuntimeCall::Uniques(..)
+					| RuntimeCall::Nfts(..)
+					| RuntimeCall::Vesting(pallet_vesting::Call::vested_transfer { .. })
+					| RuntimeCall::Indices(pallet_indices::Call::transfer { .. })
 			),
 			ProxyType::Governance => matches!(
 				c,
-				RuntimeCall::Democracy(..) |
-					RuntimeCall::Council(..) |
-					RuntimeCall::Society(..) |
-					RuntimeCall::TechnicalCommittee(..) |
-					RuntimeCall::Elections(..) |
-					RuntimeCall::Treasury(..)
+				RuntimeCall::Democracy(..)
+					| RuntimeCall::Council(..)
+					| RuntimeCall::Society(..)
+					| RuntimeCall::TechnicalCommittee(..)
+					| RuntimeCall::Elections(..)
+					| RuntimeCall::Treasury(..)
 			),
 			ProxyType::Staking => matches!(c, RuntimeCall::Staking(..)),
 		}
@@ -373,6 +373,7 @@ impl pallet_scheduler::Config for Runtime {
 
 impl pallet_glutton::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
+	type AdminOrigin = EnsureRoot<AccountId>;
 	type WeightInfo = pallet_glutton::weights::SubstrateWeight<Runtime>;
 }
 
@@ -685,8 +686,8 @@ impl Get<Option<BalancingConfig>> for OffchainRandomBalancing {
 			max => {
 				let seed = sp_io::offchain::random_seed();
 				let random = <u32>::decode(&mut TrailingZeroInput::new(&seed))
-					.expect("input is padded with zeroes; qed") %
-					max.saturating_add(1);
+					.expect("input is padded with zeroes; qed")
+					% max.saturating_add(1);
 				random as usize
 			},
 		};
@@ -1213,6 +1214,7 @@ parameter_types! {
 impl pallet_sudo::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type RuntimeCall = RuntimeCall;
+	type WeightInfo = ();
 }
 
 parameter_types! {

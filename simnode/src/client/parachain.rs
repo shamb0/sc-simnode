@@ -216,12 +216,15 @@ where
 		other: (block_import, mut telemetry, _),
 	} = components;
 
+	let net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+
 	let parachain_inherent_provider =
 		Arc::new(Mutex::new(ParachainSproofInherentProvider::<C>::new(client.clone())));
 
 	let (network, system_rpc_tx, tx_handler_controller, _network_starter, sync_service) = {
 		let params = BuildNetworkParams {
 			config: &config,
+			net_config,
 			client: client.clone(),
 			transaction_pool: pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),

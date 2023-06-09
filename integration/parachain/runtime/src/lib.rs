@@ -310,6 +310,7 @@ impl frame_system::Config for Runtime {
 impl pallet_sudo::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type RuntimeCall = RuntimeCall;
+	type WeightInfo = ();
 }
 
 impl pallet_timestamp::Config for Runtime {
