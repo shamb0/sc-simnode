@@ -301,9 +301,31 @@ pub struct NewFullBase {
 	pub rpc_handlers: RpcHandlers,
 }
 
+type SubstrateHostExecutor = sc_executor::WasmExecutor<
+	sp_wasm_interface::ExtendedHostFunctions<
+		sp_io::SubstrateHostFunctions,
+		<ExecutorDispatch as sc_executor::NativeExecutionDispatch>::ExtendHostFunctions,
+	>,
+>;
+
+pub(crate) fn new_executor(config: &Configuration) -> SubstrateHostExecutor {
+	use sc_executor_common::wasm_runtime::{HeapAllocStrategy, DEFAULT_HEAP_ALLOC_STRATEGY};
+	let heap_pages = config
+		.default_heap_pages
+		.map_or(DEFAULT_HEAP_ALLOC_STRATEGY, |h| HeapAllocStrategy::Static { extra_pages: h as _ });
+
+	SubstrateHostExecutor::builder()
+		.with_execution_method(config.wasm_method)
+		.with_onchain_heap_alloc_strategy(heap_pages)
+		.with_offchain_heap_alloc_strategy(heap_pages)
+		.with_max_runtime_instances(config.max_runtime_instances)
+		.with_runtime_cache_size(config.runtime_cache_size)
+		.build()
+}
+
 /// Creates a full service from the configuration.
 pub fn new_full_base(
-	mut config: Configuration,
+	config: Configuration,
 	disable_hardware_benchmarks: bool,
 	with_startup_data: impl FnOnce(
 		&sc_consensus_babe::BabeBlockImport<Block, FullClient, FullGrandpaBlockImport>,
@@ -317,12 +339,8 @@ pub fn new_full_base(
 		}))
 		.flatten();
 
-	let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-		config.wasm_method,
-		config.default_heap_pages,
-		config.max_runtime_instances,
-		config.runtime_cache_size,
-	);
+	let executor =
+		NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(new_executor(&config));
 
 	let sc_service::PartialComponents {
 		client,
@@ -593,7 +611,7 @@ mod tests {
 	use sc_service_test::TestNetNode;
 	use sc_transaction_pool_api::{ChainEvent, MaintainedTransactionPool};
 	use sp_consensus::{BlockOrigin, Environment, Proposer};
-	use sp_core::{crypto::Pair as CryptoPair, Public};
+	use sp_core::crypto::Pair as CryptoPair;
 	use sp_inherents::InherentDataProvider;
 	use sp_keyring::AccountKeyring;
 	use sp_keystore::KeystorePtr;
@@ -702,7 +720,7 @@ mod tests {
 						sc_consensus_babe::authorship::claim_slot(slot.into(), &epoch, &keystore)
 							.map(|(digest, _)| digest)
 					{
-						break (babe_pre_digest, epoch_descriptor);
+						break (babe_pre_digest, epoch_descriptor)
 					}
 
 					slot += 1;

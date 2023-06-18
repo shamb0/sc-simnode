@@ -141,6 +141,7 @@ where
 	})
 }
 
+#[allow(dead_code)]
 fn remote_keystore(_url: &String) -> Result<Arc<LocalKeystore>, &'static str> {
 	// FIXME: here would the concrete keystore be built,
 	//        must return a concrete type (NOT `LocalKeystore`) that
@@ -148,14 +149,33 @@ fn remote_keystore(_url: &String) -> Result<Arc<LocalKeystore>, &'static str> {
 	Err("Remote Keystore not supported.")
 }
 
+type SubstrateHostExecutor = sc_executor::WasmExecutor<
+	sp_wasm_interface::ExtendedHostFunctions<
+		sp_io::SubstrateHostFunctions,
+		<ExecutorDispatch as sc_executor::NativeExecutionDispatch>::ExtendHostFunctions,
+	>,
+>;
+
+pub(crate) fn new_executor(config: &Configuration) -> SubstrateHostExecutor {
+	use sc_executor_common::wasm_runtime::{HeapAllocStrategy, DEFAULT_HEAP_ALLOC_STRATEGY};
+	let heap_pages = config
+		.default_heap_pages
+		.map_or(DEFAULT_HEAP_ALLOC_STRATEGY, |h| HeapAllocStrategy::Static { extra_pages: h as _ });
+
+	SubstrateHostExecutor::builder()
+		.with_execution_method(config.wasm_method)
+		.with_onchain_heap_alloc_strategy(heap_pages)
+		.with_offchain_heap_alloc_strategy(heap_pages)
+		.with_max_runtime_instances(config.max_runtime_instances)
+		.with_runtime_cache_size(config.runtime_cache_size)
+		.build()
+}
+
 /// Builds a new service for a full client.
-pub fn new_full(mut config: Configuration) -> Result<TaskManager, ServiceError> {
-	let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-		config.wasm_method,
-		config.default_heap_pages,
-		config.max_runtime_instances,
-		config.runtime_cache_size,
-	);
+pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
+	let executor =
+		NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(new_executor(&config));
+
 	let sc_service::PartialComponents {
 		client,
 		backend,

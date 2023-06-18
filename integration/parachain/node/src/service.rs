@@ -66,6 +66,13 @@ impl sc_executor::NativeExecutionDispatch for WithSignatureOverride {
 
 pub type ParachainExecutor = NativeElseWasmExecutor<ParachainNativeExecutor>;
 
+type ParachainHostExecutor = sc_executor::WasmExecutor<
+	sp_wasm_interface::ExtendedHostFunctions<
+		sp_io::SubstrateHostFunctions,
+		<ParachainNativeExecutor as sc_executor::NativeExecutionDispatch>::ExtendHostFunctions,
+	>,
+>;
+
 type ParachainClient = TFullClient<Block, RuntimeApi, ParachainExecutor>;
 
 type ParachainBackend = TFullBackend<Block>;
@@ -158,6 +165,21 @@ where
 	})
 }
 
+pub(crate) fn new_executor(config: &Configuration) -> ParachainHostExecutor {
+	use sc_executor_common::wasm_runtime::{HeapAllocStrategy, DEFAULT_HEAP_ALLOC_STRATEGY};
+	let heap_pages = config
+		.default_heap_pages
+		.map_or(DEFAULT_HEAP_ALLOC_STRATEGY, |h| HeapAllocStrategy::Static { extra_pages: h as _ });
+
+	ParachainHostExecutor::builder()
+		.with_execution_method(config.wasm_method)
+		.with_onchain_heap_alloc_strategy(heap_pages)
+		.with_offchain_heap_alloc_strategy(heap_pages)
+		.with_max_runtime_instances(config.max_runtime_instances)
+		.with_runtime_cache_size(config.runtime_cache_size)
+		.build()
+}
+
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
@@ -170,11 +192,8 @@ async fn start_node_impl(
 	hwbench: Option<sc_sysinfo::HwBench>,
 ) -> sc_service::error::Result<(TaskManager, Arc<ParachainClient>)> {
 	let parachain_config = prepare_node_config(parachain_config);
-	let executor = NativeElseWasmExecutor::<ParachainNativeExecutor>::new(
-		parachain_config.wasm_method,
-		parachain_config.default_heap_pages,
-		parachain_config.max_runtime_instances,
-		parachain_config.runtime_cache_size,
+	let executor = NativeElseWasmExecutor::<ParachainNativeExecutor>::new_with_wasm_executor(
+		new_executor(&parachain_config),
 	);
 	let params = new_partial(&parachain_config, executor)?;
 	let (block_import, mut telemetry, telemetry_worker_handle) = params.other;

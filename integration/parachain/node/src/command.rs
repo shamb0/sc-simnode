@@ -1,5 +1,3 @@
-use std::net::SocketAddr;
-
 use codec::Encode;
 use cumulus_client_cli::generate_genesis_block;
 use cumulus_primitives_core::ParaId;
@@ -11,6 +9,7 @@ use sc_cli::{
 	NetworkParams, Result, RuntimeVersion, SharedParams, SubstrateCli,
 };
 use sc_executor::NativeElseWasmExecutor;
+use sc_executor_common::wasm_runtime::{HeapAllocStrategy, DEFAULT_HEAP_ALLOC_STRATEGY};
 use sc_service::config::{BasePath, PrometheusConfig};
 use sp_core::hexdisplay::HexDisplay;
 use sp_runtime::{
@@ -21,7 +20,7 @@ use sp_runtime::{
 use crate::{
 	chain_spec,
 	cli::{Cli, RelayChainCli, Subcommand},
-	rpc,
+	rpc, service,
 	service::{new_partial, ParachainNativeExecutor},
 };
 
@@ -118,12 +117,7 @@ macro_rules! construct_async_run {
 	(|$components:ident, $cli:ident, $cmd:ident, $config:ident| $( $code:tt )* ) => {{
 		let runner = $cli.create_runner($cmd)?;
 		runner.async_run(|$config| {
-			let executor = NativeElseWasmExecutor::<ParachainNativeExecutor>::new(
-				$config.wasm_method,
-				$config.default_heap_pages,
-				$config.max_runtime_instances,
-				$config.runtime_cache_size,
-			);
+			let executor = NativeElseWasmExecutor::<ParachainNativeExecutor>::new_with_wasm_executor(service::new_executor(&$config));
 			let $components = new_partial(&$config, executor)?;
 			let task_manager = $components.task_manager;
 			{ $( $code )* }.map(|v| (v, task_manager))
@@ -203,50 +197,43 @@ pub fn run() -> Result<()> {
 			let runner = cli.create_runner(cmd)?;
 			// Switch on the concrete benchmark sub-command-
 			match cmd {
-				BenchmarkCmd::Pallet(cmd) => {
+				BenchmarkCmd::Pallet(cmd) =>
 					if cfg!(feature = "runtime-benchmarks") {
 						runner.sync_run(|config| cmd.run::<Block, ParachainNativeExecutor>(config))
 					} else {
 						Err("Benchmarking wasn't enabled when building the node. \
 					You can enable it with `--features runtime-benchmarks`."
 							.into())
-					}
-				},
+					},
 				BenchmarkCmd::Block(cmd) => runner.sync_run(|config| {
-					let executor = NativeElseWasmExecutor::<ParachainNativeExecutor>::new(
-						config.wasm_method,
-						config.default_heap_pages,
-						config.max_runtime_instances,
-						config.runtime_cache_size,
-					);
+					let executor =
+						NativeElseWasmExecutor::<ParachainNativeExecutor>::new_with_wasm_executor(
+							service::new_executor(&config),
+						);
 					let partials = new_partial(&config, executor)?;
 					cmd.run(partials.client)
 				}),
 				#[cfg(not(feature = "runtime-benchmarks"))]
-				BenchmarkCmd::Storage(_) => {
+				BenchmarkCmd::Storage(_) =>
 					return Err(sc_cli::Error::Input(
 						"Compile with --features=runtime-benchmarks \
 						to enable storage benchmarks."
 							.into(),
 					)
-					.into())
-				},
+					.into()),
 				#[cfg(feature = "runtime-benchmarks")]
 				BenchmarkCmd::Storage(cmd) => runner.sync_run(|config| {
-					let executor = NativeElseWasmExecutor::<ParachainNativeExecutor>::new(
-						config.wasm_method,
-						config.default_heap_pages,
-						config.max_runtime_instances,
-						config.runtime_cache_size,
-					);
+					let executor =
+						NativeElseWasmExecutor::<ParachainNativeExecutor>::new_with_wasm_executor(
+							service::new_executor(&config),
+						);
 					let partials = new_partial(&config, executor)?;
 					let db = partials.backend.expose_db();
 					let storage = partials.backend.expose_storage();
 					cmd.run(config, partials.client.clone(), db, storage)
 				}),
-				BenchmarkCmd::Machine(cmd) => {
-					runner.sync_run(|config| cmd.run(&config, SUBSTRATE_REFERENCE_HARDWARE.clone()))
-				},
+				BenchmarkCmd::Machine(cmd) =>
+					runner.sync_run(|config| cmd.run(&config, SUBSTRATE_REFERENCE_HARDWARE.clone())),
 				// NOTE: this allows the Client to leniently implement
 				// new benchmark commands without requiring a companion MR.
 				#[allow(unreachable_patterns)]
@@ -286,13 +273,18 @@ pub fn run() -> Result<()> {
 		Some(Subcommand::Simnode(cmd)) => {
 			let runner = cli.create_runner(&cmd.run.normalize())?;
 			let config = runner.config();
-			let executor = sc_simnode::Executor::new(
-				config.wasm_method,
-				config.default_heap_pages,
-				config.max_runtime_instances,
-				None,
-				config.runtime_cache_size,
-			);
+
+			let heap_pages = config.default_heap_pages.map_or(DEFAULT_HEAP_ALLOC_STRATEGY, |h| {
+				HeapAllocStrategy::Static { extra_pages: h as _ }
+			});
+
+			let executor = sc_simnode::Executor::builder()
+				.with_execution_method(config.wasm_method)
+				.with_onchain_heap_alloc_strategy(heap_pages)
+				.with_offchain_heap_alloc_strategy(heap_pages)
+				.with_max_runtime_instances(config.max_runtime_instances)
+				.with_runtime_cache_size(config.runtime_cache_size)
+				.build();
 			let components = new_partial(config, executor)?;
 
 			runner.run_node_until_exit(move |config| async move {

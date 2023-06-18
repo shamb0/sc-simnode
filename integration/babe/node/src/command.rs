@@ -34,6 +34,8 @@ use sc_executor::NativeElseWasmExecutor;
 use sp_runtime::generic::Era;
 use std::sync::Arc;
 
+use sc_executor_common::wasm_runtime::{HeapAllocStrategy, DEFAULT_HEAP_ALLOC_STRATEGY};
+
 #[cfg(feature = "try-runtime")]
 use {
 	babe_runtime::constants::time::SLOT_DURATION,
@@ -122,12 +124,10 @@ pub fn run() -> Result<()> {
 					},
 					BenchmarkCmd::Block(cmd) => {
 						// ensure that we keep the task manager alive
-						let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-							config.wasm_method,
-							config.default_heap_pages,
-							config.max_runtime_instances,
-							config.runtime_cache_size,
-						);
+						let executor =
+							NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+								service::new_executor(&config),
+							);
 						let partial = new_partial(&config, executor)?;
 						cmd.run(partial.client)
 					},
@@ -139,12 +139,10 @@ pub fn run() -> Result<()> {
 					#[cfg(feature = "runtime-benchmarks")]
 					BenchmarkCmd::Storage(cmd) => {
 						// ensure that we keep the task manager alive
-						let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-							config.wasm_method,
-							config.default_heap_pages,
-							config.max_runtime_instances,
-							config.runtime_cache_size,
-						);
+						let executor =
+							NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+								service::new_executor(&config),
+							);
 						let partial = new_partial(&config, executor)?;
 						let db = partial.backend.expose_db();
 						let storage = partial.backend.expose_storage();
@@ -153,12 +151,10 @@ pub fn run() -> Result<()> {
 					},
 					BenchmarkCmd::Overhead(cmd) => {
 						// ensure that we keep the task manager alive
-						let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-							config.wasm_method,
-							config.default_heap_pages,
-							config.max_runtime_instances,
-							config.runtime_cache_size,
-						);
+						let executor =
+							NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+								service::new_executor(&config),
+							);
 						let partial = new_partial(&config, executor)?;
 						let ext_builder = RemarkBuilder::new(partial.client.clone());
 
@@ -172,12 +168,10 @@ pub fn run() -> Result<()> {
 					},
 					BenchmarkCmd::Extrinsic(cmd) => {
 						// ensure that we keep the task manager alive
-						let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-							config.wasm_method,
-							config.default_heap_pages,
-							config.max_runtime_instances,
-							config.runtime_cache_size,
-						);
+						let executor =
+							NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+								service::new_executor(&config),
+							);
 						let partial = service::new_partial(&config, executor)?;
 						// Register the *Remark* and *TKA* builders.
 						let ext_factory = ExtrinsicFactory(vec![
@@ -212,11 +206,8 @@ pub fn run() -> Result<()> {
 		Some(Subcommand::CheckBlock(cmd)) => {
 			let runner = cli.create_runner(cmd)?;
 			runner.async_run(|config| {
-				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-					config.wasm_method,
-					config.default_heap_pages,
-					config.max_runtime_instances,
-					config.runtime_cache_size,
+				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+					service::new_executor(&config),
 				);
 				let PartialComponents { client, task_manager, import_queue, .. } =
 					new_partial(&config, executor)?;
@@ -226,11 +217,8 @@ pub fn run() -> Result<()> {
 		Some(Subcommand::ExportBlocks(cmd)) => {
 			let runner = cli.create_runner(cmd)?;
 			runner.async_run(|config| {
-				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-					config.wasm_method,
-					config.default_heap_pages,
-					config.max_runtime_instances,
-					config.runtime_cache_size,
+				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+					service::new_executor(&config),
 				);
 				let PartialComponents { client, task_manager, .. } =
 					new_partial(&config, executor)?;
@@ -240,11 +228,8 @@ pub fn run() -> Result<()> {
 		Some(Subcommand::ExportState(cmd)) => {
 			let runner = cli.create_runner(cmd)?;
 			runner.async_run(|config| {
-				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-					config.wasm_method,
-					config.default_heap_pages,
-					config.max_runtime_instances,
-					config.runtime_cache_size,
+				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+					service::new_executor(&config),
 				);
 				let PartialComponents { client, task_manager, .. } =
 					new_partial(&config, executor)?;
@@ -254,11 +239,8 @@ pub fn run() -> Result<()> {
 		Some(Subcommand::ImportBlocks(cmd)) => {
 			let runner = cli.create_runner(cmd)?;
 			runner.async_run(|config| {
-				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-					config.wasm_method,
-					config.default_heap_pages,
-					config.max_runtime_instances,
-					config.runtime_cache_size,
+				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+					service::new_executor(&config),
 				);
 				let PartialComponents { client, task_manager, import_queue, .. } =
 					new_partial(&config, executor)?;
@@ -272,11 +254,8 @@ pub fn run() -> Result<()> {
 		Some(Subcommand::Revert(cmd)) => {
 			let runner = cli.create_runner(cmd)?;
 			runner.async_run(|config| {
-				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-					config.wasm_method,
-					config.default_heap_pages,
-					config.max_runtime_instances,
-					config.runtime_cache_size,
+				let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new_with_wasm_executor(
+					service::new_executor(&config),
 				);
 				let PartialComponents { client, task_manager, backend, .. } =
 					new_partial(&config, executor)?;
@@ -314,13 +293,18 @@ pub fn run() -> Result<()> {
 		Some(Subcommand::Simnode(cmd)) => {
 			let runner = cli.create_runner(&cmd.run.normalize())?;
 			let config = runner.config();
-			let executor = sc_simnode::Executor::new(
-				config.wasm_method,
-				config.default_heap_pages,
-				config.max_runtime_instances,
-				None,
-				config.runtime_cache_size,
-			);
+			let heap_pages = config.default_heap_pages.map_or(DEFAULT_HEAP_ALLOC_STRATEGY, |h| {
+				HeapAllocStrategy::Static { extra_pages: h as _ }
+			});
+
+			let executor = sc_simnode::Executor::builder()
+				.with_execution_method(config.wasm_method)
+				.with_onchain_heap_alloc_strategy(heap_pages)
+				.with_offchain_heap_alloc_strategy(heap_pages)
+				.with_max_runtime_instances(config.max_runtime_instances)
+				.with_runtime_cache_size(config.runtime_cache_size)
+				.build();
+
 			let PartialComponents {
 				client,
 				backend,
